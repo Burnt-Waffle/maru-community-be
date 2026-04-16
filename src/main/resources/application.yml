@@ -26,7 +26,7 @@ logging:
     org.hibernate.SQL: debug
 
 file:
-  upload-dir: ./uploads/
+  upload-dir: /app/uploads/
 
 app:
   web-application-server-url: ${DOMAIN_URL}

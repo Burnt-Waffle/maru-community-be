@@ -20,7 +20,7 @@ public class PostImageService {
 
     public PostImageService(
             PostImageRepository postImageRepository,
-            @Qualifier("s3FileService") FileService fileService // localFileService or s3FileService로 변환가능
+            @Qualifier("localFileService") FileService fileService // localFileService or s3FileService로 변환가능
     ) {
         this.postImageRepository = postImageRepository;
         this.fileService = fileService;

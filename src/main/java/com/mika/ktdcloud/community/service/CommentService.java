@@ -71,7 +71,7 @@ public class CommentService {
     // 댓글 삭제
     @Transactional
     public void deleteComment(Long id, Long currentUserId) throws AccessDeniedException {
-        Comment comment = commentRepository.findByCommentAndDeletedAtIsNull(id)
+        Comment comment = commentRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new IllegalArgumentException("comment not found."));
 
         if (!comment.getAuthor().getId().equals(currentUserId)) {

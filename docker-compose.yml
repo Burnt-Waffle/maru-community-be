@@ -1,16 +1,37 @@
 services:
-  backend:
-    image: michael568/backend:latest
-    container_name: backend
+  db:
+    image: mysql:8.0
+    container_name: mysql
     restart: always
     env_file: .env
     environment:
+      - MYSQL_DATABASE=community_db
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_USER=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  backend:
+    build: .
+    container_name: backend
+    restart: always
+    depends_on:
+      - db
+    env_file: .env
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - MYSQL_URL=jdbc:mysql://db:3306/community_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
       - MYSQL_USERNAME=${MYSQL_USERNAME}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_URL=${MYSQL_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - DOMAIN_URL=${DOMAIN_URL}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - CLOUD_FRONT_URL=${CLOUD_FRONT_URL}
     ports:
       - "8080:8080"
+    volumes:
+      - ./uploads:/app/uploads
+
+volumes:
+  mysql_data:

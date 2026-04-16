@@ -8,11 +8,11 @@ COPY gradlew ./gradlew
 
 COPY gradle ./gradle
 
-RUN ./gradlew dependencies
+RUN ./gradlew dependencies --no-daemon
 
 COPY src ./src
 
-RUN ./gradlew clean build -x test
+RUN ./gradlew clean build -x test --no-daemon
 
 FROM eclipse-temurin:21-jre-alpine
 
