@@ -3,12 +3,15 @@ package com.mika.ktdcloud.community.repository;
 import com.mika.ktdcloud.community.dto.post.response.PostSimpleResponse;
 import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.querydsl.core.types.dsl.Expressions; 
+import com.querydsl.core.types.dsl.NumberExpression;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.SliceImpl;
 
 import java.util.List;
+import java.time.Instant;
 
 import static com.mika.ktdcloud.community.entity.QPost.post;
 import static com.mika.ktdcloud.community.entity.QPostStat.postStat;
@@ -62,5 +65,43 @@ public class PostRepositoryCustomImpl implements PostRepositoryCustom {
         }
 
         return new SliceImpl<>(content, pageable, hasNextPage);
+    }
+
+    @Override
+    public List<PostSimpleResponse> findPopularPosts(java.time.Instant limitInstant, int limitSize) {
+        NumberExpression<Integer> score = postStat.likeCount.multiply(5)
+                .add(postStat.commentCount.multiply(3))
+                .add(postStat.viewCount);
+
+        List<PostSimpleResponse> content = queryFactory
+                .select(Projections.constructor(PostSimpleResponse.class,
+                        post.id,
+                        post.title,
+                        post.thumbnailUrl,
+                        user.nickname,
+                        user.profileImageUrl,
+                        post.createdAt,
+                        post.updatedAt,
+                        postStat.viewCount,
+                        postStat.likeCount,
+                        postStat.commentCount
+                ))
+                .from(post)
+                .join(post.author, user)
+                .join(post.stat, postStat)
+                .where(
+                        post.createdAt.goe(limitInstant),
+                        post.deletedAt.isNull()
+                )
+                .orderBy(
+                        score.desc(),
+                        post.createdAt.desc()
+                )
+                .limit(limitSize)
+                .fetch();
+
+        content.forEach(dto -> dto.updateUrls(cloudFrontUrl));
+
+        return content;
     }
 }

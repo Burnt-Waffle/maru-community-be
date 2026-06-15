@@ -88,4 +88,11 @@ public class PostController {
         PostLikeResponse response = postService.togglePostLike(postId,currentUserId);
         return ResponseEntity.ok(response);
     }
+
+    // 인기글 목록 조회
+    @GetMapping("/popular")
+    public ResponseEntity<List<PostSimpleResponse>> getPopularPosts() {
+        List<PostSimpleResponse> response = postService.getPopularPosts();
+        return ResponseEntity.ok(response);
+    }
 }

@@ -105,5 +105,26 @@ public class PostServiceTest {
 
         verify(postViewService).increaseViewCount(postId);
     }
+
+    @Test
+    @DisplayName("Get Popular Posts Test")
+    void getPopularPosts_Success() {
+        // given
+        java.util.List<PostSimpleResponse> mockList = new java.util.ArrayList<>();
+        mockList.add(PostSimpleResponse.builder().id(1L).title("popular post 1").build());
+        mockList.add(PostSimpleResponse.builder().id(2L).title("popular post 2").build());
+
+        given(postRepository.findPopularPosts(any(java.time.Instant.class), Mockito.eq(5))).willReturn(mockList);
+
+        // when
+        java.util.List<PostSimpleResponse> responses = postService.getPopularPosts();
+
+        // then
+        assertThat(responses).isNotNull();
+        assertThat(responses.size()).isEqualTo(2);
+        assertThat(responses.get(0).getTitle()).isEqualTo("popular post 1");
+
+        verify(postRepository).findPopularPosts(any(java.time.Instant.class), Mockito.eq(5));
+    }
 }
 

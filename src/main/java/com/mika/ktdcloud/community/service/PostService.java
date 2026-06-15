@@ -25,6 +25,8 @@ import java.nio.file.AccessDeniedException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.time.Instant;
+import java.time.Duration;
 
 @Service
 @RequiredArgsConstructor
@@ -184,5 +186,12 @@ public class PostService {
                 .orElse(0);
 
         return postMapper.toLikeResponse(currentLikeCount, isLiked);
+    }
+
+    // 인기글 조회 (최근 7일, 상위 5개)
+    @Transactional(readOnly = true)
+    public List<PostSimpleResponse> getPopularPosts() {
+        Instant limitInstant = Instant.now().minus(Duration.ofDays(7));
+        return postRepository.findPopularPosts(limitInstant, 5);
     }
 }
