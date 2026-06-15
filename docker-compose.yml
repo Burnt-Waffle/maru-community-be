@@ -1,12 +1,12 @@
 services:
   db:
     image: mysql:8.0
-    container_name: mysql
+    container_name: mysql_db
     restart: always
     env_file: .env
     environment:
-      - MYSQL_DATABASE=community_db
-      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - MYSQL_USER=${MYSQL_USERNAME}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
     ports:
@@ -23,7 +23,7 @@ services:
     env_file: .env
     environment:
       - SPRING_PROFILES_ACTIVE=dev
-      - MYSQL_URL=jdbc:mysql://db:3306/community_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+      - MYSQL_URL=${MYSQL_URL}
       - MYSQL_USERNAME=${MYSQL_USERNAME}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}

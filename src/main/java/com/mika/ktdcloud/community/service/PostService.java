@@ -13,6 +13,7 @@ import com.mika.ktdcloud.community.mapper.PostMapper;
 import com.mika.ktdcloud.community.repository.PostImageRepository;
 import com.mika.ktdcloud.community.repository.PostLikeRepository;
 import com.mika.ktdcloud.community.repository.PostRepository;
+import com.mika.ktdcloud.community.repository.PostStatRepository;
 import com.mika.ktdcloud.community.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +37,8 @@ public class PostService {
     private final PostViewService postViewService;
     private final PostMapper postMapper;
     private final PostImageService postImageService;
+    private final PostStatRepository postStatRepository;
+    private final StatCountManager statCountManager;
 
     // 게시글 생성
     @Transactional
@@ -147,9 +150,9 @@ public class PostService {
     // 좋아요 토글
     @Transactional
     public PostLikeResponse togglePostLike(Long postId, Long currentUserId) {
-        Post post = postRepository.findWithLockById(postId)
-                .orElseThrow(() -> new IllegalArgumentException("Post not found."));
-
+        // getReferenceById는 실제 SELECT를 날리지 않고 프록시만 생성함.
+        // 이를 통해 부모(Post) 행의 비관적 락(X-Lock)을 전혀 기다리지 않고 통계 데이터만 업데이트 가능.
+        Post post = postRepository.getReferenceById(postId);
         User user = userRepository.getReferenceById(currentUserId);
 
         Optional<PostLike> existingLike = postLikeRepository.findByPostAndUser(post, user);
@@ -160,20 +163,26 @@ public class PostService {
             PostLike like = existingLike.get();
             if (like.getDeletedAt() == null) {
                 like.softDelete();
-                post.getStat().decreaseLikeCount();
+                statCountManager.decrementLikeCount(postId);
                 isLiked = false;
             } else {
                 like.restore();
-                post.getStat().increaseLikeCount();
+                statCountManager.incrementLikeCount(postId);
                 isLiked = true;
             }
         } else {
             PostLike newLike = PostLike.create(user, post);
             postLikeRepository.save(newLike);
-            post.getStat().increaseLikeCount();
+            statCountManager.incrementLikeCount(postId);
             isLiked = true;
         }
 
-        return postMapper.toLikeResponse(post.getStat().getLikeCount(), isLiked);
+        // 최신 수치는 DB와 메모리를 합산해서 반환할 수 있으나, 
+        // 성능을 위해 DB 수치만 반환하거나 클라이언트에서 예측 처리하도록 함.
+        int currentLikeCount = postStatRepository.findById(postId)
+                .map(com.mika.ktdcloud.community.entity.PostStat::getLikeCount)
+                .orElse(0);
+
+        return postMapper.toLikeResponse(currentLikeCount, isLiked);
     }
 }

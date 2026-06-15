@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 @SpringBootApplication
+@org.springframework.scheduling.annotation.EnableScheduling
 public class CommunityApplication {
 
 	public static void main(String[] args) {
