@@ -6,6 +6,7 @@ import com.mika.ktdcloud.community.dto.post.response.PostDetailResponse;
 import com.mika.ktdcloud.community.dto.post.response.PostLikeResponse;
 import com.mika.ktdcloud.community.dto.post.response.PostSimpleResponse;
 import com.mika.ktdcloud.community.service.PostService;
+import com.mika.ktdcloud.community.service.DummyDataService;
 import com.mika.ktdcloud.community.util.SecurityUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ import java.util.List;
 public class PostController {
 
     private final PostService postService;
+    private final DummyDataService dummyDataService;
 
     // 게시글 생성
     @PostMapping
@@ -94,5 +96,15 @@ public class PostController {
     public ResponseEntity<List<PostSimpleResponse>> getPopularPosts() {
         List<PostSimpleResponse> response = postService.getPopularPosts();
         return ResponseEntity.ok(response);
+    }
+
+    // 성능 테스트용 더미 데이터 생성 API
+    @PostMapping("/dummy")
+    public ResponseEntity<Void> createDummyPosts(
+            @RequestParam(defaultValue = "100000") int totalCount,
+            @RequestParam(defaultValue = "10000") int recentCount
+    ) {
+        dummyDataService.createDummyPosts(totalCount, recentCount);
+        return ResponseEntity.ok().build();
     }
 }
