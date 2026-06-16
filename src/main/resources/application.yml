@@ -1,4 +1,7 @@
 spring:
+  profiles:
+    active: dev # 기본 프로필은 로컬 개발(dev)로 설정
+
   datasource:
     url: ${MYSQL_URL}
     username: ${MYSQL_USERNAME}
@@ -13,11 +16,8 @@ spring:
       ddl-auto: create   # 개발 중에는 create / create-drop / update 중 선택
     properties:
       hibernate:
-        format_sql: true
-        use_sql_comments: true # QueryDSL 실제로 execute된 JPQL을 볼 수 있음
-
-#  profiles:
-#    active: dev # dev 프로필을 사용중일 때는 더미데이터 추가
+        format_sql: false      # 기본적으로 SQL 포맷팅 비활성화
+        use_sql_comments: false # 기본적으로 주석 비활성화
 
 jwt:
   secret: ${JWT_SECRET_KEY} # openssl rand -hex 32
@@ -26,7 +26,7 @@ jwt:
 
 logging:
   level:
-    org.hibernate.SQL: debug
+    org.hibernate.SQL: info # info 레벨로 기본 SQL 로깅 비활성화
 
 file:
   upload-dir: /app/uploads/
@@ -49,3 +49,52 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+
+---
+# dev 환경 (개발 전용)
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+decorator:
+  datasource:
+    p6spy:
+      enable-logging: true # dev 환경에서만 P6Spy SQL 로깅 활성화
+      multiline: true
+
+spring:
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+
+---
+# prod 환경 (실운영 환경)
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+decorator:
+  datasource:
+    p6spy:
+      enable-logging: false # P6Spy 비활성화로 로깅 오버헤드 완벽 제거
+
+spring:
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+        use_sql_comments: false
+
+logging:
+  level:
+    root: warn             # 로그 레벨을 높여 오버헤드 최소화
+    org.hibernate.SQL: info
+
