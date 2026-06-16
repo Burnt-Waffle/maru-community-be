@@ -56,19 +56,17 @@ spring:
   config:
     activate:
       on-profile: dev
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
 
 decorator:
   datasource:
     p6spy:
       enable-logging: true # dev 환경에서만 P6Spy SQL 로깅 활성화
       multiline: true
-
-spring:
-  jpa:
-    properties:
-      hibernate:
-        format_sql: true
-        use_sql_comments: true
 
 logging:
   level:
@@ -80,21 +78,20 @@ spring:
   config:
     activate:
       on-profile: prod
-
-decorator:
-  datasource:
-    p6spy:
-      enable-logging: false # P6Spy 비활성화로 로깅 오버헤드 완벽 제거
-
-spring:
   jpa:
     properties:
       hibernate:
         format_sql: false
         use_sql_comments: false
 
+decorator:
+  datasource:
+    p6spy:
+      enable-logging: false # P6Spy 비활성화로 로깅 오버헤드 완벽 제거
+
 logging:
   level:
     root: warn             # 로그 레벨을 높여 오버헤드 최소화
     org.hibernate.SQL: info
+
 
