@@ -104,4 +104,38 @@ public class PostRepositoryCustomImpl implements PostRepositoryCustom {
 
         return content;
     }
+
+    @Override
+    public List<PostSimpleResponse> findPopularPostsByIds(List<Long> ids, java.time.Instant limitInstant) {
+        if (ids == null || ids.isEmpty()) {
+            return new java.util.ArrayList<>();
+        }
+
+        List<PostSimpleResponse> content = queryFactory
+                .select(Projections.constructor(PostSimpleResponse.class,
+                        post.id,
+                        post.title,
+                        post.thumbnailUrl,
+                        user.nickname,
+                        user.profileImageUrl,
+                        post.createdAt,
+                        post.updatedAt,
+                        postStat.viewCount,
+                        postStat.likeCount,
+                        postStat.commentCount
+                ))
+                .from(post)
+                .join(post.author, user)
+                .join(post.stat, postStat)
+                .where(
+                        post.id.in(ids),
+                        post.createdAt.goe(limitInstant),
+                        post.deletedAt.isNull()
+                )
+                .fetch();
+
+        content.forEach(dto -> dto.updateUrls(cloudFrontUrl));
+
+        return content;
+    }
 }

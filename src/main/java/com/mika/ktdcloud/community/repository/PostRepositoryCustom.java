@@ -11,4 +11,5 @@ import java.util.List;
 public interface PostRepositoryCustom {
     Slice<PostSimpleResponse> findPostsWithDetails(Pageable pageable);
     List<PostSimpleResponse> findPopularPosts(Instant limitInstant, int limitSize);
+    List<PostSimpleResponse> findPopularPostsByIds(List<Long> ids, Instant limitInstant);
 }
