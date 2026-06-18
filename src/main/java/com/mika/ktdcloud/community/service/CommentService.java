@@ -30,6 +30,8 @@ public class CommentService {
     private final CommentMapper commentMapper;
     private final PostStatRepository postStatRepository; // PostStatRepository 주입
     private final EntityManager entityManager;
+    private final StatCountManager statCountManager;
+
 
     // 댓글 생성
     @Transactional
@@ -42,8 +44,10 @@ public class CommentService {
 
         post.getStat().increaseCommentCount();
         postStatRepository.save(post.getStat()); // 변경된 PostStat을 명시적으로 저장
+        statCountManager.incrementCommentCount(postId);
 
         return commentMapper.toResponse(savedComment, true);
+
     }
 
     @Transactional(readOnly = true)
@@ -91,5 +95,7 @@ public class CommentService {
         comment.softDelete();
         post.getStat().decreaseCommentCount();
         postStatRepository.save(post.getStat()); // 변경된 PostStat을 명시적으로 저장
+        statCountManager.decrementCommentCount(postId);
     }
+
 }
