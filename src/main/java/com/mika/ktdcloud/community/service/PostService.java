@@ -16,8 +16,10 @@ import com.mika.ktdcloud.community.repository.PostRepository;
 import com.mika.ktdcloud.community.repository.PostStatRepository;
 import com.mika.ktdcloud.community.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +32,9 @@ import java.time.Duration;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PostService {
+
 
     private final PostRepository postRepository;
     private final UserRepository userRepository;
@@ -41,6 +45,8 @@ public class PostService {
     private final PostImageService postImageService;
     private final PostStatRepository postStatRepository;
     private final StatCountManager statCountManager;
+    private final StringRedisTemplate redisTemplate;
+
 
     // 게시글 생성
     @Transactional
@@ -192,6 +198,41 @@ public class PostService {
     @Transactional(readOnly = true)
     public List<PostSimpleResponse> getPopularPosts() {
         Instant limitInstant = Instant.now().minus(Duration.ofDays(7));
-        return postRepository.findPopularPosts(limitInstant, 5);
+
+        // 1. Redis Sorted Set에서 인기글 ID 목록 가져오기 (상위 100개 넉넉히 조회)
+        java.util.Set<String> popularPostIds = redisTemplate.opsForZSet().reverseRange("posts:popular", 0, 99);
+
+        if (popularPostIds == null || popularPostIds.isEmpty()) {
+            // Redis 랭킹 캐시 콜드스타트 -> DB에서 구한 뒤 캐시 워밍업 수행
+            log.info("Popular posts ranking is empty in Redis. Falling back to DB.");
+            List<PostSimpleResponse> dbPopular = postRepository.findPopularPosts(limitInstant, 5);
+
+            // Redis ZSET에 스코어를 채워넣음 (동시 워밍업)
+            dbPopular.forEach(post -> {
+                int score = post.getLikeCount() * 5 + post.getCommentCount() * 3 + post.getViewCount();
+                redisTemplate.opsForZSet().add("posts:popular", String.valueOf(post.getId()), score);
+            });
+
+            return dbPopular;
+        }
+
+        // 2. String ID 목록을 Long ID 목록으로 파싱
+        List<Long> ids = popularPostIds.stream()
+                .map(Long::valueOf)
+                .collect(java.util.stream.Collectors.toList());
+
+        // 3. ID와 7일 조건으로 DB에서 상세 정보 조회
+        List<PostSimpleResponse> posts = postRepository.findPopularPostsByIds(ids, limitInstant);
+
+        // 4. Redis의 인기글 정렬 순서대로 DB 조회 결과 정렬 (IN 쿼리는 순서 보장이 안 됨)
+        java.util.Map<Long, PostSimpleResponse> postMap = posts.stream()
+                .collect(java.util.stream.Collectors.toMap(PostSimpleResponse::getId, java.util.function.Function.identity()));
+
+        return ids.stream()
+                .map(postMap::get)
+                .filter(java.util.Objects::nonNull)
+                .limit(5) // 상위 5개만 최종 슬라이싱
+                .collect(java.util.stream.Collectors.toList());
     }
 }
+
