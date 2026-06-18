@@ -88,12 +88,17 @@ public class PostController {
     @PostMapping("/{postId}/like")
     public ResponseEntity<PostLikeResponse> togglePostLike(
             @PathVariable Long postId,
+            @RequestHeader(value = "X-Test-User-Id", required = false) Long testUserId, // 테스트용
             HttpServletRequest httpServletRequest
     ) {
-        Long currentUserId = SecurityUtil.getCurrentUserId(httpServletRequest);
-        PostLikeResponse response = postService.togglePostLike(postId,currentUserId);
+        // Long currentUserId = SecurityUtil.getCurrentUserId(httpServletRequest);
+        // PostLikeResponse response = postService.togglePostLike(postId,currentUserId);
+        // Redis 사용 시 테스트용
+        Long currentUserId = testUserId != null ? testUserId : SecurityUtil.getCurrentUserId(httpServletRequest);
+        PostLikeResponse response = postService.togglePostLike(postId, currentUserId);
         return ResponseEntity.ok(response);
     }
+
 
     // 인기글 목록 조회
     @GetMapping("/popular")
