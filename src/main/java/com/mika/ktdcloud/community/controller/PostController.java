@@ -125,5 +125,13 @@ public class PostController {
         status.put("viewCounts", statCountManager.getViewCountChangesSnapshot());
         return ResponseEntity.ok(status);
     }
+
+    // 성능 테스트용 더미 유저 생성 API
+    @PostMapping("/dummy/users")
+    public ResponseEntity<Void> createDummyUsers(@RequestParam(defaultValue = "10000") int count) {
+        dummyDataService.createDummyUsers(count);
+        return ResponseEntity.ok().build();
+    }
 }
+
 

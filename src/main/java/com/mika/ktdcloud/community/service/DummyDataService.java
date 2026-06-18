@@ -94,4 +94,30 @@ public class DummyDataService {
 
         log.info("Successfully finished dummy post creation.");
     }
+
+    @Transactional
+    public void createDummyUsers(int count) {
+        log.info("Starting dummy user creation: count={}", count);
+        String sql = "INSERT IGNORE INTO users (user_id, email, password, nickname, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)";
+        List<Object[]> batch = new ArrayList<>();
+        int batchSize = 1000;
+        Instant now = Instant.now();
+
+        for (int i = 1; i <= count; i++) {
+            Long userId = (long) i;
+            String email = "dummy_user_" + userId + "@test.com";
+            String password = "$2a$10$DUMMY_ENCRYPTED_PASSWORD_VALUE_1234567890";
+            String nickname = "User" + userId;
+
+            batch.add(new Object[]{userId, email, password, nickname, now, now});
+
+            if (i % batchSize == 0 || i == count) {
+                jdbcTemplate.batchUpdate(sql, batch);
+                batch.clear();
+                log.info("Inserted dummy users batch: {}/{}", i, count);
+            }
+        }
+        log.info("Successfully finished dummy user creation.");
+    }
 }
+
