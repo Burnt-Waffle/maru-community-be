@@ -19,7 +19,7 @@ public class PostStatScheduler {
     private final StatCountManager statCountManager;
     private final PostStatRepository postStatRepository;
 
-    @Scheduled(fixedDelay = 60000) // 1분마다 실행
+    @Scheduled(fixedDelay = 600000) // 10분마다 실행 (테스트용), 원래는 5분으로 설정
     @Transactional
     public void flushStats() {
         // 1. 조회수 벌크 업데이트

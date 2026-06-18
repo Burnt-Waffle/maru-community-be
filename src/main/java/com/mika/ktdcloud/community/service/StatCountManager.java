@@ -46,4 +46,25 @@ public class StatCountManager {
         });
         return snapshot;
     }
+    
+    // 현재 메모리에 담긴 누적 수치만을 복사하여 리턴해주는 메서드 추가 (테스트용)
+    public Map<Long, Integer> getLikeCountChangesSnapshot() {
+        return getSnapshot(likeCountChanges);
+    }
+
+    public Map<Long, Integer> getViewCountChangesSnapshot() {
+        return getSnapshot(viewCountIncrements);
+    }
+
+    private Map<Long, Integer> getSnapshot(ConcurrentHashMap<Long, AtomicInteger> targetMap) {
+        Map<Long, Integer> snapshot = new HashMap<>();
+        targetMap.forEach((postId, atomicVal) -> {
+            int val = atomicVal.get();
+            if (val != 0) {
+                snapshot.put(postId, val);
+            }
+        });
+        return snapshot;
+    }
 }
+

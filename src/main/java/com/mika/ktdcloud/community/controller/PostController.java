@@ -7,7 +7,9 @@ import com.mika.ktdcloud.community.dto.post.response.PostLikeResponse;
 import com.mika.ktdcloud.community.dto.post.response.PostSimpleResponse;
 import com.mika.ktdcloud.community.service.PostService;
 import com.mika.ktdcloud.community.service.DummyDataService;
+import com.mika.ktdcloud.community.service.StatCountManager;
 import com.mika.ktdcloud.community.util.SecurityUtil;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,8 @@ public class PostController {
 
     private final PostService postService;
     private final DummyDataService dummyDataService;
+    private final StatCountManager statCountManager;
+
 
     // 게시글 생성
     @PostMapping
@@ -107,4 +111,14 @@ public class PostController {
         dummyDataService.createDummyPosts(totalCount, recentCount);
         return ResponseEntity.ok().build();
     }
+
+    // 각 인스턴스별 인메모리 캐시 상태 조회 API (테스트용)
+    @GetMapping("/test/cache-status")
+    public ResponseEntity<java.util.Map<String, Object>> getCacheStatus() {
+        java.util.Map<String, Object> status = new java.util.HashMap<>();
+        status.put("likeCounts", statCountManager.getLikeCountChangesSnapshot());
+        status.put("viewCounts", statCountManager.getViewCountChangesSnapshot());
+        return ResponseEntity.ok(status);
+    }
 }
+
