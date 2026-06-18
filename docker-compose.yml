@@ -18,14 +18,16 @@ services:
     build: .
     container_name: backend
     restart: always
-    depends_on:
-      - db
+    # depends_on:
+    #   - db
     env_file: .env
     environment:
       - SPRING_PROFILES_ACTIVE=dev
       - MYSQL_URL=${MYSQL_URL}
       - MYSQL_USERNAME=${MYSQL_USERNAME}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - DOMAIN_URL=${DOMAIN_URL}
     ports:
