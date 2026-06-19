@@ -17,9 +17,9 @@ public class PostSimpleResponse {
     private final Instant createdAt;
     private final Instant updatedAt;
 
-    private final Integer viewCount;
-    private final Integer likeCount;
-    private final Integer commentCount;
+    private Integer viewCount;
+    private Integer likeCount;
+    private Integer commentCount;
 
     @Builder
     public PostSimpleResponse(
@@ -54,5 +54,12 @@ public class PostSimpleResponse {
             this.thumbnailUrl = cloudFrontUrl + this.thumbnailUrl;
         }
     }
+
+    public void updateCounts(int viewCount, int likeCount, int commentCount) {
+        this.viewCount = viewCount;
+        this.likeCount = likeCount;
+        this.commentCount = commentCount;
+    }
+
 }
 

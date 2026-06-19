@@ -20,9 +20,9 @@ public class PostDetailResponse {
     private final Instant updatedAt;
     private final Instant deletedAt;
 
-    private final Integer viewCount;
-    private final Integer likeCount;
-    private final Integer commentCount;
+    private Integer viewCount;
+    private Integer likeCount;
+    private Integer commentCount;
 
     private final boolean isLikedByCurrentUser;
     private final boolean isAuthor;
@@ -58,5 +58,11 @@ public class PostDetailResponse {
         this.commentCount = commentCount;
         this.isLikedByCurrentUser = isLikedByCurrentUser;
         this.isAuthor = isAuthor;
+    }
+
+    public void updateCounts(int viewCount, int likeCount, int commentCount) {
+        this.viewCount = viewCount;
+        this.likeCount = likeCount;
+        this.commentCount = commentCount;
     }
 }
