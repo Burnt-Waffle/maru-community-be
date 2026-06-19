@@ -32,9 +32,9 @@ public class PostMapper {
                 .authorProfileImageUrl(post.getAuthor().getProfileImageUrl())
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())
-                .viewCount(post.getStat().getViewCount())
-                .likeCount(post.getStat().getLikeCount())
-                .commentCount(post.getStat().getCommentCount())
+                .viewCount(post.getStat() != null ? post.getStat().getViewCount() : 0)
+                .likeCount(post.getStat() != null ? post.getStat().getLikeCount() : 0)
+                .commentCount(post.getStat() != null ? post.getStat().getCommentCount() : 0)
                 .build();
     }
 
@@ -52,11 +52,12 @@ public class PostMapper {
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())
                 .deletedAt(post.getDeletedAt())
-                .viewCount(post.getStat().getViewCount())
-                .likeCount(post.getStat().getLikeCount())
-                .commentCount(post.getStat().getCommentCount())
+                .viewCount(post.getStat() != null ? post.getStat().getViewCount() : 0)
+                .likeCount(post.getStat() != null ? post.getStat().getLikeCount() : 0)
+                .commentCount(post.getStat() != null ? post.getStat().getCommentCount() : 0)
                 .isLikedByCurrentUser(isLikedByCurrentUser)
                 .isAuthor(isAuthor)
                 .build();
     }
+
 }
