@@ -1,17 +1,23 @@
 package com.mika.ktdcloud.community.service;
 
+import com.mika.ktdcloud.community.dto.post.response.RealTimeStat;
+import com.mika.ktdcloud.community.entity.Post;
+import com.mika.ktdcloud.community.entity.PostStat;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
  * 게시글 조회수 및 좋아요 수치를 Redis에서 관리하는 클래스.
  * DB 락 경합을 피하기 위해 Redis Hash 기반의 Write-behind 패턴을 사용하며,
  * 실시간 인기글 집계를 위해 Redis Sorted Set(ZSET)을 사용합니다.
+ * 또한 Redis의 실시간 수치를 원본으로 활용하기 위해 개별 게시글의 현재 총합 수치를 캐싱합니다.
  */
 @Component
 @RequiredArgsConstructor
@@ -29,35 +35,115 @@ public class StatCountManager {
     private static final int COMMENT_SCORE_WEIGHT = 3;
     private static final int VIEW_SCORE_WEIGHT = 1;
 
+    // 개별 게시글 실시간 통계 키 생성 유틸
+    private String getPostStatsKey(Long postId) {
+        return "post:" + postId + ":stats";
+    }
+
     public void incrementViewCount(Long postId) {
-        // 1. RDB 배치 반영용 Hash 카운터 증가
+        String postKey = getPostStatsKey(postId);
+        // 1. 실시간 개별 수치 오버라이드용 카운터 갱신 (HMGET 대상)
+        redisTemplate.opsForHash().increment(postKey, "viewCount", 1);
+        redisTemplate.expire(postKey, Duration.ofDays(7)); // TTL 연장
+
+        // 2. RDB 배치 반영용 Hash 카운터 증가
         redisTemplate.opsForHash().increment(VIEW_COUNT_KEY, String.valueOf(postId), 1);
-        // 2. 실시간 Sorted Set 랭킹 Score 갱신
+        // 3. 실시간 Sorted Set 랭킹 Score 갱신
         redisTemplate.opsForZSet().incrementScore(POPULAR_RANK_KEY, String.valueOf(postId), VIEW_SCORE_WEIGHT);
     }
 
     public void incrementLikeCount(Long postId) {
-        // 1. RDB 배치 반영용 Hash 카운터 증가
+        String postKey = getPostStatsKey(postId);
+        // 1. 실시간 개별 수치 오버라이드용 카운터 갱신
+        redisTemplate.opsForHash().increment(postKey, "likeCount", 1);
+        redisTemplate.expire(postKey, Duration.ofDays(7));
+
+        // 2. RDB 배치 반영용 Hash 카운터 증가
         redisTemplate.opsForHash().increment(LIKE_COUNT_KEY, String.valueOf(postId), 1);
-        // 2. 실시간 Sorted Set 랭킹 Score 갱신
+        // 3. 실시간 Sorted Set 랭킹 Score 갱신
         redisTemplate.opsForZSet().incrementScore(POPULAR_RANK_KEY, String.valueOf(postId), LIKE_SCORE_WEIGHT);
     }
 
     public void decrementLikeCount(Long postId) {
-        // 1. RDB 배치 반영용 Hash 카운터 증가
+        String postKey = getPostStatsKey(postId);
+        // 1. 실시간 개별 수치 오버라이드용 카운터 감산
+        redisTemplate.opsForHash().increment(postKey, "likeCount", -1);
+        redisTemplate.expire(postKey, Duration.ofDays(7));
+
+        // 2. RDB 배치 반영용 Hash 카운터 증가
         redisTemplate.opsForHash().increment(LIKE_COUNT_KEY, String.valueOf(postId), -1);
-        // 2. 실시간 Sorted Set 랭킹 Score 갱신
+        // 3. 실시간 Sorted Set 랭킹 Score 갱신
         redisTemplate.opsForZSet().incrementScore(POPULAR_RANK_KEY, String.valueOf(postId), -LIKE_SCORE_WEIGHT);
     }
 
     public void incrementCommentCount(Long postId) {
-        // 댓글 추가 시 실시간 ZSET Score 갱신
+        String postKey = getPostStatsKey(postId);
+        // 1. 실시간 개별 수치 오버라이드용 카운터 갱신
+        redisTemplate.opsForHash().increment(postKey, "commentCount", 1);
+        redisTemplate.expire(postKey, Duration.ofDays(7));
+
+        // 2. 실시간 Sorted Set 랭킹 Score 갱신
         redisTemplate.opsForZSet().incrementScore(POPULAR_RANK_KEY, String.valueOf(postId), COMMENT_SCORE_WEIGHT);
     }
 
     public void decrementCommentCount(Long postId) {
-        // 댓글 삭제 시 실시간 ZSET Score 감산
+        String postKey = getPostStatsKey(postId);
+        // 1. 실시간 개별 수치 오버라이드용 카운터 감산
+        redisTemplate.opsForHash().increment(postKey, "commentCount", -1);
+        redisTemplate.expire(postKey, Duration.ofDays(7));
+
+        // 2. 실시간 Sorted Set 랭킹 Score 감산
         redisTemplate.opsForZSet().incrementScore(POPULAR_RANK_KEY, String.valueOf(postId), -COMMENT_SCORE_WEIGHT);
+    }
+
+    public RealTimeStat getRealTimeStats(Long postId, int dbViews, int dbLikes, int dbComments) {
+        String key = getPostStatsKey(postId);
+        Map<Object, Object> rawEntries = redisTemplate.opsForHash().entries(key);
+
+        if (rawEntries.isEmpty() || !rawEntries.containsKey("initialized")) {
+            // 캐시 미스 또는 부분 캐시 -> DB 원본 값 + 현재까지 누적된 Redis delta로 Redis 워밍업
+            int redisViews = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("viewCount", "0").toString()));
+            int redisLikes = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("likeCount", "0").toString()));
+            int redisComments = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("commentCount", "0").toString()));
+
+            int realViews = dbViews + redisViews;
+            int realLikes = dbLikes + redisLikes;
+            int realComments = dbComments + redisComments;
+
+            Map<String, String> initData = new HashMap<>();
+            initData.put("viewCount", String.valueOf(realViews));
+            initData.put("likeCount", String.valueOf(realLikes));
+            initData.put("commentCount", String.valueOf(realComments));
+            initData.put("initialized", "true");
+
+            redisTemplate.opsForHash().putAll(key, initData);
+            redisTemplate.expire(key, Duration.ofDays(7)); // 7일의 TTL 부여
+
+            return new RealTimeStat(realViews, realLikes, realComments);
+        }
+
+        int viewCount = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("viewCount", "0").toString()));
+        int likeCount = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("likeCount", "0").toString()));
+        int commentCount = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("commentCount", "0").toString()));
+
+        return new RealTimeStat(viewCount, likeCount, commentCount);
+    }
+
+    // --- 다건 실시간 통계 조회 및 캐시 워밍업 (Override용) ---
+
+    public Map<Long, RealTimeStat> getRealTimeStatsBulk(List<Long> postIds, List<Post> posts) {
+        Map<Long, RealTimeStat> result = new HashMap<>();
+        for (Post post : posts) {
+            PostStat stat = post.getStat();
+            RealTimeStat rts = getRealTimeStats(post.getId(), stat.getViewCount(), stat.getLikeCount(), stat.getCommentCount());
+            result.put(post.getId(), rts);
+        }
+        return result;
+    }
+
+    // --- ZSET 랭킹 수동 워밍업 지원 ---
+    public void warmUpPopularZSet(Long postId, int score) {
+        redisTemplate.opsForZSet().add(POPULAR_RANK_KEY, String.valueOf(postId), score);
     }
 
     // --- RDB 반영용 스냅샷 조회 및 리셋 (Atomic RENAME 기법) ---

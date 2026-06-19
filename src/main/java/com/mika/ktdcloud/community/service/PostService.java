@@ -5,9 +5,11 @@ import com.mika.ktdcloud.community.dto.post.request.PostUpdateRequest;
 import com.mika.ktdcloud.community.dto.post.response.PostDetailResponse;
 import com.mika.ktdcloud.community.dto.post.response.PostLikeResponse;
 import com.mika.ktdcloud.community.dto.post.response.PostSimpleResponse;
+import com.mika.ktdcloud.community.dto.post.response.RealTimeStat;
 import com.mika.ktdcloud.community.entity.Post;
 import com.mika.ktdcloud.community.entity.PostImage;
 import com.mika.ktdcloud.community.entity.PostLike;
+import com.mika.ktdcloud.community.entity.PostStat;
 import com.mika.ktdcloud.community.entity.User;
 import com.mika.ktdcloud.community.mapper.PostMapper;
 import com.mika.ktdcloud.community.repository.PostImageRepository;
@@ -26,9 +28,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.file.AccessDeniedException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import java.time.Instant;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.time.Duration;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -81,7 +88,13 @@ public class PostService {
     // 게시글 목록 조회 (무한 스크롤링)
     @Transactional(readOnly = true)
     public Slice<PostSimpleResponse> getPostList(Pageable pageable) {
-        return postRepository.findPostsWithDetails(pageable);
+        Slice<PostSimpleResponse> postSlice = postRepository.findPostsWithDetails(pageable);
+        postSlice.forEach(dto -> {
+            RealTimeStat rts =
+                    statCountManager.getRealTimeStats(dto.getId(), dto.getViewCount(), dto.getLikeCount(), dto.getCommentCount());
+            dto.updateCounts(rts.getViewCount(), rts.getLikeCount(), rts.getCommentCount());
+        });
+        return postSlice;
     }
 
     //게시글 상세 조회
@@ -98,7 +111,18 @@ public class PostService {
         }
 
         postViewService.increaseViewCount(id);
-        return postMapper.toDetailResponse(post, isAuthor, isLiked);
+
+        PostDetailResponse response = postMapper.toDetailResponse(post, isAuthor, isLiked);
+        com.mika.ktdcloud.community.entity.PostStat stat = post.getStat();
+        int dbViews = stat != null ? stat.getViewCount() : 0;
+        int dbLikes = stat != null ? stat.getLikeCount() : 0;
+        int dbComments = stat != null ? stat.getCommentCount() : 0;
+
+        RealTimeStat realTimeStat =
+                statCountManager.getRealTimeStats(id, dbViews, dbLikes, dbComments);
+
+        response.updateCounts(realTimeStat.getViewCount(), realTimeStat.getLikeCount(), realTimeStat.getCommentCount());
+        return response;
     }
 
     // 게시글 수정
@@ -185,13 +209,23 @@ public class PostService {
             isLiked = true;
         }
 
-        // 최신 수치는 DB와 메모리를 합산해서 반환할 수 있으나, 
-        // 성능을 위해 DB 수치만 반환하거나 클라이언트에서 예측 처리하도록 함.
-        int currentLikeCount = postStatRepository.findById(postId)
-                .map(com.mika.ktdcloud.community.entity.PostStat::getLikeCount)
-                .orElse(0);
+        // 최신 수치는 Redis의 실시간 통계 카운트를 적용하여 반환합니다.
+        int dbViews = 0;
+        int dbLikes = 0;
+        int dbComments = 0;
 
-        return postMapper.toLikeResponse(currentLikeCount, isLiked);
+        Optional<PostStat> statOpt = postStatRepository.findById(postId);
+        if (statOpt.isPresent()) {
+            PostStat stat = statOpt.get();
+            dbViews = stat.getViewCount();
+            dbLikes = stat.getLikeCount();
+            dbComments = stat.getCommentCount();
+        }
+
+        RealTimeStat rts =
+                statCountManager.getRealTimeStats(postId, dbViews, dbLikes, dbComments);
+
+        return postMapper.toLikeResponse(rts.getLikeCount(), isLiked);
     }
 
     // 인기글 조회 (최근 7일, 상위 5개)
@@ -199,18 +233,22 @@ public class PostService {
     public List<PostSimpleResponse> getPopularPosts() {
         Instant limitInstant = Instant.now().minus(Duration.ofDays(7));
 
-        // 1. Redis Sorted Set에서 인기글 ID 목록 가져오기 (상위 100개 넉넉히 조회)
-        java.util.Set<String> popularPostIds = redisTemplate.opsForZSet().reverseRange("posts:popular", 0, 99);
+        // 1. Redis Sorted Set에서 인기글 ID 목록 가져오기 (상위 100개 조회)
+        Set<String> popularPostIds = redisTemplate.opsForZSet().reverseRange("posts:popular", 0, 99);
 
         if (popularPostIds == null || popularPostIds.isEmpty()) {
             // Redis 랭킹 캐시 콜드스타트 -> DB에서 구한 뒤 캐시 워밍업 수행
             log.info("Popular posts ranking is empty in Redis. Falling back to DB.");
             List<PostSimpleResponse> dbPopular = postRepository.findPopularPosts(limitInstant, 5);
 
-            // Redis ZSET에 스코어를 채워넣음 (동시 워밍업)
+            // Redis ZSET에 스코어를 채워넣음 (동시 워밍업) 및 개별 통계 워밍업
             dbPopular.forEach(post -> {
                 int score = post.getLikeCount() * 5 + post.getCommentCount() * 3 + post.getViewCount();
                 redisTemplate.opsForZSet().add("posts:popular", String.valueOf(post.getId()), score);
+
+                RealTimeStat realTimeStat =
+                        statCountManager.getRealTimeStats(post.getId(), post.getViewCount(), post.getLikeCount(), post.getCommentCount());
+                post.updateCounts(realTimeStat.getViewCount(), realTimeStat.getLikeCount(), realTimeStat.getCommentCount());
             });
 
             return dbPopular;
@@ -219,20 +257,27 @@ public class PostService {
         // 2. String ID 목록을 Long ID 목록으로 파싱
         List<Long> ids = popularPostIds.stream()
                 .map(Long::valueOf)
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
 
         // 3. ID와 7일 조건으로 DB에서 상세 정보 조회
         List<PostSimpleResponse> posts = postRepository.findPopularPostsByIds(ids, limitInstant);
 
+        // --- Redis 오버라이드 로직 추가 ---
+        posts.forEach(post -> {
+            RealTimeStat realTimeStat =
+                    statCountManager.getRealTimeStats(post.getId(), post.getViewCount(), post.getLikeCount(), post.getCommentCount());
+            post.updateCounts(realTimeStat.getViewCount(), realTimeStat.getLikeCount(), realTimeStat.getCommentCount());
+        });
+
         // 4. Redis의 인기글 정렬 순서대로 DB 조회 결과 정렬 (IN 쿼리는 순서 보장이 안 됨)
-        java.util.Map<Long, PostSimpleResponse> postMap = posts.stream()
-                .collect(java.util.stream.Collectors.toMap(PostSimpleResponse::getId, java.util.function.Function.identity()));
+        Map<Long, PostSimpleResponse> postMap = posts.stream()
+                .collect(Collectors.toMap(PostSimpleResponse::getId, Function.identity()));
 
         return ids.stream()
                 .map(postMap::get)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .limit(5) // 상위 5개만 최종 슬라이싱
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
 }
 
