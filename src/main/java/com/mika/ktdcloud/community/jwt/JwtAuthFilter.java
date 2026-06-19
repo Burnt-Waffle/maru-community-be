@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -17,6 +18,7 @@ import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtProvider jwtProvider;
 
@@ -38,7 +40,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
         boolean shouldSkip = Arrays.stream(EXCLUDED_PATHS).anyMatch(path::startsWith);
-        System.out.println("[DEBUG] Incoming Path: " + path + ", Should Skip: " + shouldSkip);
+        if (!path.startsWith("/actuator/health")) {
+            log.debug("Incoming Path: {}, Should Skip: {}", path, shouldSkip);
+        }
         return shouldSkip;
     }
 
@@ -59,7 +63,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         Optional<String> token = extractTokenFromHeader(request);
 
         if (token.isEmpty()) {
-            System.out.println("[DEBUG] 401 Error (No Token) for Path: " + path);
+            log.debug("401 Error (No Token) for Path: {}", path);
 
             response.setHeader("Access-Control-Allow-Origin", webServerUrl);
             response.setHeader("Access-Control-Allow-Credentials", "true");
@@ -70,7 +74,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         if (!validateAndSetAttributes(token.get(), request)) {
-            System.out.println("[DEBUG] 401 Error (No Token) for Path: " + path);
+            log.debug("401 Error (Invalid/Expired Token) for Path: {}", path);
 
             response.setHeader("Access-Control-Allow-Origin", webServerUrl);
             response.setHeader("Access-Control-Allow-Credentials", "true");
