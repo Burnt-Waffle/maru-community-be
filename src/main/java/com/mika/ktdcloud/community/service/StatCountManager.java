@@ -101,14 +101,17 @@ public class StatCountManager {
         Map<Object, Object> rawEntries = redisTemplate.opsForHash().entries(key);
 
         if (rawEntries.isEmpty() || !rawEntries.containsKey("initialized")) {
-            // 캐시 미스 또는 부분 캐시 -> DB 원본 값 + 현재까지 누적된 Redis delta로 Redis 워밍업
-            int redisViews = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("viewCount", "0").toString()));
-            int redisLikes = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("likeCount", "0").toString()));
-            int redisComments = Math.max(0, Integer.parseInt(rawEntries.getOrDefault("commentCount", "0").toString()));
+            // 캐시 미스 또는 부분 캐시 -> DB 원본 값 + 아직 DB에 반영되지 않은 Redis의 누적 변동량(Delta)으로 Redis 워밍업
+            Object unflushedViewObj = redisTemplate.opsForHash().get(VIEW_COUNT_KEY, String.valueOf(postId));
+            Object unflushedLikeObj = redisTemplate.opsForHash().get(LIKE_COUNT_KEY, String.valueOf(postId));
 
-            int realViews = dbViews + redisViews;
-            int realLikes = dbLikes + redisLikes;
-            int realComments = dbComments + redisComments;
+            int deltaViews = unflushedViewObj != null ? Integer.parseInt(unflushedViewObj.toString()) : 0;
+            int deltaLikes = unflushedLikeObj != null ? Integer.parseInt(unflushedLikeObj.toString()) : 0;
+            int deltaComments = 0; // 댓글은 DB에 실시간 반영되므로 delta가 없음
+
+            int realViews = dbViews + deltaViews;
+            int realLikes = dbLikes + deltaLikes;
+            int realComments = dbComments + deltaComments;
 
             Map<String, String> initData = new HashMap<>();
             initData.put("viewCount", String.valueOf(realViews));
@@ -159,8 +162,25 @@ public class StatCountManager {
     private Map<Long, Integer> getAndReset(String key) {
         String tempKey = key + ":temp";
 
+        // 키가 존재하지 않으면 renameNX를 실행하지 않고 조기 종료 (ERR no such key 에러 방지)
+        if (Boolean.FALSE.equals(redisTemplate.hasKey(key))) {
+            return new HashMap<>();
+        }
+
         // 원자적으로 키 이름을 RENAME 하여, 백업 스레드가 처리하는 동안 신규 유입되는 증감량 누수 차단
-        Boolean renamed = redisTemplate.renameIfAbsent(key, tempKey);
+        Boolean renamed = false;
+        try {
+            renamed = redisTemplate.renameIfAbsent(key, tempKey);
+        } catch (Exception e) {
+            // 다른 인스턴스에서 이미 처리하여 키가 사라진 경우(ERR no such key) 등을 안전하게 방어
+            if (e.getMessage() != null && e.getMessage().contains("no such key")) {
+                log.debug("Source key {} does not exist in Redis (might be processed by other instance). Skipping.", key);
+            } else {
+                log.error("Failed to rename key: {}", key, e);
+            }
+            return new HashMap<>();
+        }
+
         if (Boolean.FALSE.equals(renamed)) {
             // tempKey가 이미 존재하여 이름 변경에 실패한 경우 (이전 백업 배치가 다소 밀린 상태)
             log.warn("Temp key {} already exists. Skipping this flush cycle.", tempKey);
